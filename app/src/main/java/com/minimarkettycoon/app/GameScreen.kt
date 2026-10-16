@@ -1,5 +1,6 @@
 package com.minimarkettycoon.app
 
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
