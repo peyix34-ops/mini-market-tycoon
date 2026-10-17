@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -32,9 +34,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -44,10 +52,39 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import javax.microedition.khronos.egl.EGL10
+import javax.microedition.khronos.egl.EGLConfig
+import javax.microedition.khronos.egl.EGLDisplay
 import kotlin.math.hypot
 
 object GameHolder {
     var view: GLSurfaceView? = null
+}
+
+/** Önce 24 bit derinlik tamponu dener, olmazsa 16 bit. */
+class DepthConfigChooser : GLSurfaceView.EGLConfigChooser {
+    override fun chooseConfig(egl: EGL10, display: EGLDisplay): EGLConfig {
+        for (depth in intArrayOf(24, 16)) {
+            val attribs = intArrayOf(
+                EGL10.EGL_RED_SIZE, 8,
+                EGL10.EGL_GREEN_SIZE, 8,
+                EGL10.EGL_BLUE_SIZE, 8,
+                EGL10.EGL_ALPHA_SIZE, 8,
+                EGL10.EGL_DEPTH_SIZE, depth,
+                EGL10.EGL_RENDERABLE_TYPE, 4,
+                EGL10.EGL_NONE
+            )
+            val num = IntArray(1)
+            egl.eglChooseConfig(display, attribs, null, 0, num)
+            if (num[0] > 0) {
+                val configs = arrayOfNulls<EGLConfig>(num[0])
+                egl.eglChooseConfig(display, attribs, configs, num[0], num)
+                val c = configs[0]
+                if (c != null) return c
+            }
+        }
+        throw IllegalStateException("Uygun EGL ayari bulunamadi")
+    }
 }
 
 private class JoyState {
@@ -88,7 +125,6 @@ fun GameScreen() {
     var sB by remember { mutableStateOf(cam.back) }
     var sF by remember { mutableStateOf(cam.fov) }
 
-    // Sabit joystick merkezi (sol alt)
     val origin = Offset(
         joyRadius * 1.4f + 30f,
         viewSize.height - joyRadius * 1.4f - 120f
@@ -112,7 +148,7 @@ fun GameScreen() {
             factory = { c ->
                 GLSurfaceView(c).apply {
                     setEGLContextClientVersion(2)
-                    setEGLConfigChooser(8, 8, 8, 8, 16, 0)
+                    setEGLConfigChooser(DepthConfigChooser())
                     setRenderer(GameRenderer(input, cam))
                     renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
                     GameHolder.view = this
@@ -120,7 +156,7 @@ fun GameScreen() {
             }
         )
 
-        // Joystick görseli (her zaman görünür, sabit)
+        // Sabit joystick görseli
         Canvas(Modifier.fillMaxSize()) {
             drawCircle(Color(0x33FFFFFF), joyRadius, origin)
             drawCircle(Color(0x88FFFFFF), joyRadius, origin, style = Stroke(4f))
@@ -133,7 +169,6 @@ fun GameScreen() {
             drawCircle(Color(0x55000000), 52f, c, style = Stroke(3f))
         }
 
-        // Dokunma katmanı: sadece joystick bölgesi çalışır
         if (!panelOpen) {
             Box(
                 Modifier
@@ -172,27 +207,42 @@ fun GameScreen() {
                     }
             )
 
-            // AYARLAR butonu
+            // Çark (ayarlar) butonu
             Box(
                 Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 16.dp, top = 36.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .size(46.dp)
+                    .clip(CircleShape)
                     .background(Color(0x99000000))
                     .clickable {
                         sH = cam.height
                         sB = cam.back
                         sF = cam.fov
                         panelOpen = true
-                    }
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    "AYARLAR",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Canvas(Modifier.size(26.dp)) {
+                    val c = center
+                    val r = size.minDimension / 2f
+                    for (i in 0 until 8) {
+                        rotate(i * 45f, pivot = c) {
+                            drawRoundRect(
+                                Color.White,
+                                topLeft = Offset(c.x - r * 0.17f, c.y - r),
+                                size = Size(r * 0.34f, r * 0.5f),
+                                cornerRadius = CornerRadius(r * 0.06f)
+                            )
+                        }
+                    }
+                    val gear = Path().apply {
+                        fillType = PathFillType.EvenOdd
+                        addOval(Rect(c, r * 0.74f))
+                        addOval(Rect(c, r * 0.30f))
+                    }
+                    drawPath(gear, Color.White)
+                }
             }
         }
 
