@@ -212,7 +212,7 @@ fun DrawScope.drawBuilding(b: BuildingProp, tm: TextMeasurer) {
         val by = r.bottom - wallH - 4f
         drawRoundRect(Color(0xFFE5484D), Offset(bx, by - 52f), Size(bw, 48f), CornerRadius(12f))
         drawRoundRect(Color.White, Offset(bx, by - 52f), Size(bw, 48f), CornerRadius(12f), style = Stroke(4f))
-        drawText(tm, "MARKET", Offset(bx + 20f, by - 52f + (48f - layout.size.height) / 2f), style)
+        drawText(layout, topLeft = Offset(bx + 20f, by - 52f + (48f - layout.size.height) / 2f))
 
         // tente
         val n = 10
