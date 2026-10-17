@@ -70,8 +70,17 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-}
+    
+    override fun onPause() {
+        super.onPause()
+        GameHolder.view?.onPause()
+    }
 
+    override fun onResume() {
+        super.onResume()
+        GameHolder.view?.onResume()
+      }
+}
 @Composable
 private fun CrashScreen(text: String, onClose: () -> Unit) {
     Column(
