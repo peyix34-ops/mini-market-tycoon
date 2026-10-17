@@ -64,7 +64,7 @@ class World3D {
             trees += Tree3(x, z, 0.9f + rnd.nextFloat() * 0.5f, rnd.nextInt(2), rnd.nextFloat() * 6.28f)
         }
         guard = 0
-        while (tufts.size < 0 && guard < 1000) {
+        while (tufts.size < 0 && guard < 0) {
             guard++
             val x = (rnd.nextFloat() - 0.5f) * 100f
             val z = (rnd.nextFloat() - 0.5f) * 80f
