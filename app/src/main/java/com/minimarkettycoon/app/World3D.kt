@@ -44,9 +44,7 @@ class World3D {
     private var puffTimer = 0f
 
     private fun free(x: Float, z: Float, m: Float): Boolean {
-        if (abs(x) < 4f + m) return false                                           // yol
-        if (x > 3f - m && x < 18f + m && z > -10f - m && z < 2.6f + m) return false // market + otopark
-        if (x > 19f - m && x < 35f + m && z > -10f - m && z < 4.6f + m) return false // arsa
+        if (abs(x) < 4f + m) return false                                          
         return true
     }
 
