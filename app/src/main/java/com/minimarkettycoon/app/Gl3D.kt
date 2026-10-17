@@ -134,15 +134,31 @@ class Mesh(vertices: FloatArray, indices: ShortArray) {
     private val ib: ShortBuffer = ByteBuffer.allocateDirect(indices.size * 2)
         .order(ByteOrder.nativeOrder()).asShortBuffer().apply { put(indices); position(0) }
     private val count = indices.size
+    private var vbo = 0
+    private var ibo = 0
+
+    private fun upload() {
+        val ids = IntArray(2)
+        GLES20.glGenBuffers(2, ids, 0)
+        vbo = ids[0]
+        ibo = ids[1]
+        vb.position(0)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo)
+        GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, vb.capacity() * 4, vb, GLES20.GL_STATIC_DRAW)
+        ib.position(0)
+        GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, ibo)
+        GLES20.glBufferData(GLES20.GL_ELEMENT_ARRAY_BUFFER, ib.capacity() * 2, ib, GLES20.GL_STATIC_DRAW)
+    }
 
     fun draw(posLoc: Int, nrmLoc: Int) {
-        vb.position(0)
-        GLES20.glVertexAttribPointer(posLoc, 3, GLES20.GL_FLOAT, false, 24, vb)
+        if (vbo == 0) upload()
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo)
+        GLES20.glVertexAttribPointer(posLoc, 3, GLES20.GL_FLOAT, false, 24, 0)
         GLES20.glEnableVertexAttribArray(posLoc)
-        vb.position(3)
-        GLES20.glVertexAttribPointer(nrmLoc, 3, GLES20.GL_FLOAT, false, 24, vb)
+        GLES20.glVertexAttribPointer(nrmLoc, 3, GLES20.GL_FLOAT, false, 24, 12)
         GLES20.glEnableVertexAttribArray(nrmLoc)
-        GLES20.glDrawElements(GLES20.GL_TRIANGLES, count, GLES20.GL_UNSIGNED_SHORT, ib)
+        GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, ibo)
+        GLES20.glDrawElements(GLES20.GL_TRIANGLES, count, GLES20.GL_UNSIGNED_SHORT, 0)
     }
 }
 
