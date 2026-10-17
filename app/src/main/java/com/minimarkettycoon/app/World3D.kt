@@ -182,7 +182,6 @@ class World3D {
             if (abs(r.x - hero.x) > 4f || abs(r.z - hero.z) > 4f) continue
             pushCircle(r.x, r.z, 0.55f * r.s + 0.35f)
         }
-        pushRect(shop, 0.45f)
-        pushRect(plot, 0.45f)
+        
     }
 }
