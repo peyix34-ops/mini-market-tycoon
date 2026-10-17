@@ -8,6 +8,12 @@ import javax.microedition.khronos.opengles.GL10
 import kotlin.math.abs
 import kotlin.math.sin
 
+class CameraConfig {
+    @Volatile var height = 24f
+    @Volatile var back = 15f
+    @Volatile var fov = 45f
+}
+
 private const val OUT = 0.035f
 
 private const val GRASS = 0x6CC24A
@@ -21,7 +27,6 @@ private const val PINE2 = 0x3A9360
 private const val PINE3 = 0x47A86F
 private const val ROAD = 0x4B5059
 private const val CURB = 0xD9D4C7
-private const val WOOD = 0x8B5A2B
 
 private const val SKIN = 0xFFCBA4
 private const val SKIN_D = 0xE8A97E
@@ -33,7 +38,10 @@ private const val CAP = 0xFF9F1C
 private const val CAP_D = 0xE07F00
 private const val BELT = 0x1E2A4A
 
-class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
+class GameRenderer(
+    private val input: GameInput,
+    private val cam: CameraConfig
+) : GLSurfaceView.Renderer {
 
     private val world = World3D()
     private val ms = MatStack()
@@ -42,10 +50,8 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
     private val vp = FloatArray(16)
     private val inv = FloatArray(16)
     private val nrm = FloatArray(16)
-    private val tmp = FloatArray(16)
 
     private var prog = 0
-    private var signProg = 0
     private var aPos = 0
     private var aNrm = 0
     private var uVP = 0
@@ -56,17 +62,11 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
     private var uLight = 0
     private var uFog = 0
     private var uCam = 0
-    private var sPos = 0
-    private var sUV = 0
-    private var sMVP = 0
-    private var sTex = 0
 
     private lateinit var cube: Mesh
     private lateinit var sphere: Mesh
     private lateinit var cylinder: Mesh
     private lateinit var cone: Mesh
-    private lateinit var marketSign: SignQuad
-    private lateinit var saleSign: SignQuad
 
     private var aspect = 0.5f
     private var last = 0L
@@ -90,26 +90,16 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
         uFog = GLES20.glGetUniformLocation(prog, "uFog")
         uCam = GLES20.glGetUniformLocation(prog, "uCam")
 
-        signProg = GlUtil.program(Shaders.SIGN_VS, Shaders.SIGN_FS)
-        sPos = GLES20.glGetAttribLocation(signProg, "aPos")
-        sUV = GLES20.glGetAttribLocation(signProg, "aUV")
-        sMVP = GLES20.glGetUniformLocation(signProg, "uMVP")
-        sTex = GLES20.glGetUniformLocation(signProg, "uTex")
-
         cube = Prims.cube()
         sphere = Prims.sphere()
         cylinder = Prims.cylinder()
         cone = Prims.cone()
-
-        marketSign = SignQuad("MARKET", null, 0xE5484D, 0xFFFFFF, 0xFFFFFF, 1024, 256)
-        saleSign = SignQuad("SATILIK", "ARSA", 0xFFD84D, 0xC62828, 0x7A4B26, 1024, 512)
         last = 0L
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         GLES20.glViewport(0, 0, width, height)
         aspect = width.toFloat() / height.toFloat()
-        Matrix.perspectiveM(proj, 0, 45f, aspect, 1f, 400f)
     }
 
     override fun onDrawFrame(gl: GL10?) {
@@ -121,12 +111,17 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
+        // kamera ayarları (ayarlar menüsünden canlı güncellenir)
+        val camH = cam.height
+        val camB = cam.back
+        Matrix.perspectiveM(proj, 0, cam.fov, aspect, 1f, 400f)
+
         val cx = world.camX
         val cz = world.camZ
         val ex = cx
-        val ey = 24f
-        val ez = cz + 15f
-        Matrix.setLookAtM(view, 0, ex, ey, ez, cx, 0f, cz, 0f, 1f, 0f)
+        val ey = camH
+        val ez = cz + camB
+        Matrix.setLookAtM(view, 0, ex, ey, ez, cx, 0f, cz, 0f, 0f, -1f)
         Matrix.multiplyMM(vp, 0, proj, 0, view, 0)
 
         GLES20.glUseProgram(prog)
@@ -175,19 +170,6 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
         ms.pop()
     }
 
-    private fun sign(q: SignQuad, x: Float, y: Float, z: Float, sx: Float, sy: Float) {
-        ms.push()
-        ms.translate(x, y, z)
-        ms.scale(sx, sy, 1f)
-        Matrix.multiplyMM(tmp, 0, vp, 0, ms.cur, 0)
-        ms.pop()
-        GLES20.glUseProgram(signProg)
-        GLES20.glUniformMatrix4fv(sMVP, 1, false, tmp, 0)
-        GLES20.glUniform1i(sTex, 0)
-        q.draw(sPos, sUV)
-        GLES20.glUseProgram(prog)
-    }
-
     private fun near(x: Float, z: Float, d: Float) =
         abs(x - world.camX) < d && abs(z - world.camZ) < d
 
@@ -199,7 +181,7 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
         // zemin
         part(cube, 0f, -0.25f, 0f, 500f, 0.5f, 500f, GRASS, 0f)
         for (p in w.patches) {
-            if (near(p.x, p.z, 50f)) part(cylinder, p.x, 0.012f, p.z, p.r * 2f, 0.02f, p.r * 2f, p.color, 0f)
+            if (near(p.x, p.z, 60f)) part(cylinder, p.x, 0.012f, p.z, p.r * 2f, 0.02f, p.r * 2f, p.color, 0f)
         }
 
         // yol + kaldırım + orta çizgiler
@@ -208,16 +190,13 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
         part(cube, 3.45f, 0f, 0f, 0.9f, 0.16f, 500f, CURB, 0f)
         var zi = -100
         while (zi <= 100) {
-            if (abs(zi - w.camZ) < 60f) part(cube, 0f, 0.01f, zi.toFloat(), 0.22f, 0.1f, 2.4f, 0xFFE27A, 0f)
+            if (abs(zi - w.camZ) < 70f) part(cube, 0f, 0.01f, zi.toFloat(), 0.22f, 0.1f, 2.4f, 0xFFE27A, 0f)
             zi += 5
         }
 
-        // otopark / market önü
-        part(cube, 10.45f, 0f, -0.5f, 13.1f, 0.12f, 5f, 0xBDB8AD, 0f)
-
         // çiçek, çimen, taş
         for (f in w.flowers) {
-            if (!near(f.x, f.z, 38f)) continue
+            if (!near(f.x, f.z, 45f)) continue
             val sw = sin(w.time * 2f + f.x) * 4f
             ms.push()
             ms.translate(f.x, 0f, f.z)
@@ -228,7 +207,7 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
             ms.pop()
         }
         for (t in w.tufts) {
-            if (!near(t.x, t.z, 38f)) continue
+            if (!near(t.x, t.z, 45f)) continue
             val sw = sin(w.time * 2.5f + t.x) * 6f
             ms.push()
             ms.translate(t.x, 0f, t.z)
@@ -238,24 +217,16 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
             ms.pop()
         }
         for (r in w.rocks) {
-            if (!near(r.x, r.z, 45f)) continue
+            if (!near(r.x, r.z, 50f)) continue
             part(cylinder, r.x - 0.3f, 0.03f, r.z - 0.2f, 1.8f * r.s, 0.02f, 1.4f * r.s, SHADOW, 0f)
             part(sphere, r.x, 0.3f * r.s, r.z, 1.4f * r.s, 0.9f * r.s, 1.1f * r.s, 0x9AA0A8, 0.03f)
             part(sphere, r.x + 0.5f * r.s, 0.2f * r.s, r.z + 0.3f * r.s, 0.7f * r.s, 0.5f * r.s, 0.6f * r.s, 0xB4BAC1, 0.025f)
         }
 
-        drawMarket()
-        drawPlot()
-
-        // ağaçlar ve karakteri derinlik sırasına göre çizmeye gerek yok (derinlik tamponu var)
         for (t in w.trees) {
-            if (near(t.x, t.z, 55f)) drawTree(t)
+            if (near(t.x, t.z, 60f)) drawTree(t)
         }
         drawHero()
-
-        // tabelalar (dokulu) en sonda
-        sign(marketSign, 13f, 4.5f, -2.92f, 4.4f, 1.0f)
-        sign(saleSign, 27f, 2.7f, 3.92f, 3.6f, 1.7f)
     }
 
     private fun drawTree(t: Tree3) {
@@ -286,79 +257,6 @@ class GameRenderer(private val input: GameInput) : GLSurfaceView.Renderer {
             ms.pop()
         }
         ms.pop()
-    }
-
-    private fun drawMarket() {
-        // gölge
-        part(cube, 12.4f, 0.03f, -5.4f, 8.4f, 0.02f, 7.4f, SHADOW, 0f)
-        // gövde
-        part(cube, 13f, 0.3f, -6f, 7.3f, 0.5f, 6.3f, 0xCDBD9B)
-        part(cube, 13f, 1.76f, -6f, 7f, 3.4f, 6f, 0xFFF0CC)
-        // çatı
-        part(cube, 13f, 3.66f, -6f, 7.8f, 0.4f, 6.8f, 0x5E7C94)
-        part(cube, 11.2f, 4.15f, -7f, 1.6f, 0.7f, 1.2f, 0xA9BFD2)
-        part(cube, 15f, 4.05f, -7.5f, 0.6f, 0.5f, 0.6f, 0xA9BFD2)
-        // tabela arkalığı
-        part(cube, 13f, 4.5f, -3.1f, 4.7f, 1.2f, 0.3f, 0x7A2E2E)
-        part(cube, 11f, 3.95f, -3.1f, 0.2f, 0.2f, 0.3f, 0x5A1E1E, 0f)
-        // tente
-        for (i in 0 until 8) {
-            val x = 9.55f + 0.9f * i + 0.45f
-            val c = if (i % 2 == 0) 0xE5484D else 0xFFFFFF
-            ms.push()
-            ms.translate(x, 2.6f, -2.3f)
-            ms.rotate(14f, 1f, 0f, 0f)
-            ms.scale(0.9f, 0.12f, 1.5f)
-            obj(cube, c, 0.02f)
-            ms.pop()
-        }
-        // kapı ve pencereler
-        part(cube, 13f, 1.16f, -2.96f, 1.5f, 2.2f, 0.12f, WOOD)
-        part(cube, 13f, 1.5f, -2.88f, 1.0f, 1.3f, 0.06f, 0x9AD8FF, 0.015f)
-        part(cube, 10.8f, 1.5f, -2.97f, 2.3f, 1.6f, 0.1f, 0xFFFFFF)
-        part(cube, 10.8f, 1.5f, -2.9f, 2.0f, 1.3f, 0.06f, 0x9AD8FF, 0.015f)
-        part(cube, 15.2f, 1.5f, -2.97f, 2.3f, 1.6f, 0.1f, 0xFFFFFF)
-        part(cube, 15.2f, 1.5f, -2.9f, 2.0f, 1.3f, 0.06f, 0x9AD8FF, 0.015f)
-        // kasalar
-        part(cube, 16.1f, 0.6f, -1.9f, 1.0f, 1.0f, 1.0f, 0xC98B4B)
-        ms.push()
-        ms.translate(16.2f, 1.45f, -1.9f)
-        ms.rotate(20f, 0f, 1f, 0f)
-        ms.scale(0.7f, 0.7f, 0.7f)
-        obj(cube, 0xD9A05B, OUT)
-        ms.pop()
-        // sokak lambası
-        part(cylinder, 8.2f, 1.9f, -1.4f, 0.16f, 3.8f, 0.16f, 0x3A3F47)
-        part(sphere, 8.2f, 3.95f, -1.4f, 0.6f, 0.6f, 0.6f, 0xFFE9A0)
-    }
-
-    private fun drawPlot() {
-        // toprak
-        part(cube, 27f, 0f, -3f, 14f, 0.1f, 12f, 0xB88D5B, 0f)
-        // çit direkleri
-        var x = 20f
-        while (x <= 34.01f) {
-            part(cube, x, 0.65f, -9f, 0.26f, 1.2f, 0.26f, WOOD, 0.025f)
-            part(cube, x, 0.65f, 3f, 0.26f, 1.2f, 0.26f, WOOD, 0.025f)
-            x += 2f
-        }
-        var z = -7f
-        while (z <= 1.01f) {
-            part(cube, 20f, 0.65f, z, 0.26f, 1.2f, 0.26f, WOOD, 0.025f)
-            part(cube, 34f, 0.65f, z, 0.26f, 1.2f, 0.26f, WOOD, 0.025f)
-            z += 2f
-        }
-        // çit tahtaları
-        for (y in floatArrayOf(0.5f, 0.95f)) {
-            part(cube, 27f, y, -9f, 14f, 0.12f, 0.12f, 0xA9722F, 0.02f)
-            part(cube, 27f, y, 3f, 14f, 0.12f, 0.12f, 0xA9722F, 0.02f)
-            part(cube, 20f, y, -3f, 0.12f, 0.12f, 12f, 0xA9722F, 0.02f)
-            part(cube, 34f, y, -3f, 0.12f, 0.12f, 12f, 0xA9722F, 0.02f)
-        }
-        // satılık tabelası direkleri + arkalık
-        part(cube, 25f, 1.3f, 3.8f, 0.3f, 2.5f, 0.3f, WOOD)
-        part(cube, 29f, 1.3f, 3.8f, 0.3f, 2.5f, 0.3f, WOOD)
-        part(cube, 27f, 2.7f, 3.8f, 3.9f, 2.0f, 0.2f, 0x7A4B26)
     }
 
     private fun drawHero() {
